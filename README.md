@@ -18,7 +18,8 @@ When it rings, Wake covers every screen, blocks Cmd-Tab, Force Quit, and Quit, t
 |---|---|---|
 | Wake.app | `app/main.swift` | The menu bar alarm app. It handles repeating and one-time alarms and the `wake://ring` URL trigger. It is a single Swift file and needs no Xcode project. |
 | Watcher | `triggers/notify-watch.mjs` | Every 5 s it reads new rows from the macOS notification log for the apps you list. For each chat it creates or updates a Super Productivity task, then rings Wake. |
-| Ring trigger | `triggers/wake-ring.mjs` | Opens `wake://ring`, with guards: it rings only when you have been away from the Mac, at most once per gap, and never in quiet hours. |
+| Ring trigger | `triggers/wake-ring.mjs` | Opens `wake://ring`, with guards: it rings only when you have been away from the Mac, at most once per gap, never in quiet hours, and only when someone is home. |
+| Presence | `triggers/presence.mjs` | Checks whether you're home by looking for your phone on the Mac's network. If you've left, it skips the ring. |
 | Super Productivity client | `triggers/super-productivity.mjs` | Talks to Super Productivity's local REST API. It keeps one open task per chat and makes a new task after you tick the old one done. |
 | Config | `~/.config/wake/config.json` | Sets apps, chat names, mutes, and ring settings. See `config.example.json`. |
 | LaunchAgent | `launchd/` | Runs the watcher at login and keeps it running. |
@@ -136,6 +137,30 @@ Then name them in `names`. A name of `"-"` mutes a chat completely: no task and 
 | `gapMinutes` | `10` | At most one ring per this many minutes. Messages in between still become tasks. |
 | `awayMinutes` | `15` | Ring only when the Mac has had no keyboard or mouse input this long, which means you are asleep or away. Set it to `0` to always ring. |
 | `quietHours` | `null` | Never ring between these local times. The range can wrap past midnight. |
+
+### Don't ring when nobody's home
+
+Being away from the Mac for 15 minutes also looks like leaving the house. To avoid ringing an empty home, Wake can check for your phone on the Mac's network first:
+
+```bash
+node triggers/presence.mjs find
+```
+
+That lists the iPhones and iPads advertising on your network, for example `Your-iPhone.local`. Put yours in the config:
+
+```json
+"presence": { "enabled": true, "devices": ["Your-iPhone.local"], "probeSeconds": 8 }
+```
+
+Before each ring, the trigger resolves that name and sends one UDP packet to the phone's mDNS port, which wakes a dozing iPhone's Wi-Fi. It then pings the phone for up to `probeSeconds`. It also counts the phone as home if the phone answers IPv6 neighbor discovery, which a sleeping iPhone does even when it ignores ping. If nothing answers, or the name doesn't resolve, nobody's home and it skips the ring. The message still becomes a task. If you list several devices (yours and a partner's), any one of them answering counts as home.
+
+To check it now:
+
+```bash
+node triggers/presence.mjs
+```
+
+A phone with Wi-Fi off, in Airplane Mode, or with a dead battery reads as away, so Wake won't ring. Leave Wi-Fi on overnight if you rely on it.
 
 To check whether it would ring right now:
 

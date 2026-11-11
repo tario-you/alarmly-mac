@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Ring Wake now, through its URL trigger (wake://ring?label=...&problems=N), with the guards from config.ring:
-// at most one ring per gapMinutes, only while you are away from the Mac (no input for awayMinutes), never in quietHours.
+// at most one ring per gapMinutes, only while you are away from the Mac (no input for awayMinutes), never in quietHours,
+// and only when someone is home (config.presence: your phone answers on this network).
 //   node triggers/wake-ring.mjs ring "WeChat: Alice" [--force] [--dry-run]
 //   node triggers/wake-ring.mjs why      (would it ring right now, and if not, why)
 // State: ~/.local/state/wake/ring.json { last, label }
@@ -9,6 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, STATE_DIR } from './config.mjs';
+import { atHome } from './presence.mjs';
 
 const STATE = path.join(STATE_DIR, 'ring.json');
 const run = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -31,7 +33,7 @@ export function inQuietHours(q, d = new Date()) {
 export function holdReason({ now, last, idle, ring, date = new Date(now) }) {
   if (!ring.enabled) return 'ringing is off (ring.enabled)';
   if (inQuietHours(ring.quietHours, date)) return `quiet hours ${ring.quietHours.from}-${ring.quietHours.to}`;
-  if (last && now - last < ring.gapMinutes * 60e3) return `rang ${Math.round((now - last) / 60e3)} min ago`;
+  if (last && now >= last && now - last < ring.gapMinutes * 60e3) return `rang ${Math.round((now - last) / 60e3)} min ago`;
   if (ring.awayMinutes > 0 && idle < ring.awayMinutes * 60e3) return `you are at the Mac (input ${Math.round(idle / 60e3)} min ago)`;
   return '';
 }
@@ -40,10 +42,13 @@ export function ringUrl(label, problems) {
   return `wake://ring?label=${encodeURIComponent(String(label).slice(0, 80))}&problems=${Math.min(10, Math.max(1, problems | 0))}`;
 }
 
-export function ring(label, { cfg = loadConfig(), now = Date.now(), dryRun = false, force = false, idle, open = (u) => run('open', ['-g', u]) } = {}) {
+export function ring(label, { cfg = loadConfig(), now = Date.now(), dryRun = false, force = false, idle, open = (u) => run('open', ['-g', u]), home = atHome } = {}) {
   let st = {}; try { st = JSON.parse(readFileSync(STATE, 'utf8')); } catch {}
   const hold = force ? '' : holdReason({ now, last: st.last, idle: idle ?? idleMs(), ring: cfg.ring });
   if (hold) return { rang: false, skipped: hold };
+  // (checked last: it can take a few seconds, and the cheap guards above usually decide first)
+  const p = force ? { home: true } : home(cfg.presence);
+  if (!p.home) return { rang: false, skipped: `nobody home (${p.how})` };
   const url = ringUrl(label, cfg.ring.problems);
   if (dryRun) return { rang: false, dryRun: true, url };
   open(url);

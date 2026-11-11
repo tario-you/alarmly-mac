@@ -17,6 +17,11 @@
     "awayMinutes": 15,
     "quietHours": null
   },
+  "presence": {
+    "enabled": true,
+    "devices": ["Your-iPhone.local"],
+    "probeSeconds": 8
+  },
   "superProductivity": {
     "enabled": true,
     "projectId": "INBOX_PROJECT"

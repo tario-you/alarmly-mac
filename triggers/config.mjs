@@ -31,6 +31,13 @@ export const DEFAULTS = {
     projectId: 'INBOX_PROJECT',   // or a project's id from GET /projects
     tokenFile: path.join(os.homedir(), 'Library/Application Support/superProductivity/local-rest-api-token'),
   },
+  // Ring only when someone is home: your phone answers on the Mac's network. When nobody is home the message still becomes a
+  // task, it just does not ring. Find your phone's name with `node triggers/presence.mjs find`.
+  presence: {
+    enabled: false,
+    devices: [],          // e.g. ["Your-iPhone.local"]; any one answering counts as home
+    probeSeconds: 8,      // how long to keep trying a dozing phone before calling it gone
+  },
   pollSeconds: 5,
 };
 

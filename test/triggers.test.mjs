@@ -139,3 +139,37 @@ test('handle: tasks then one ring for the batch; Super Productivity down still r
   assert.equal(rings.length, 2);
   assert.ok(logs.some((l) => /super productivity: ECONNREFUSED/.test(l)));
 });
+
+test('presence: home when any address answers, gone when none do or the phone is not on the network', async () => {
+  const { atHome, resolve } = await import('../triggers/presence.mjs');
+  assert.deepEqual(resolve('p.local', 'name: p.local\nip_address: 192.168.0.9\nipv6_address: fe80:e::1\nipv6_address: 2001:db8::5\n'), { v4: ['192.168.0.9'], v6: ['2001:db8::5'], link: ['1'] });
+  assert.equal(atHome({ enabled: false, devices: ['p.local'] }).home, true);
+  assert.equal(atHome({ enabled: true, devices: [] }).home, true);
+  let t = 0; const clock = () => (t += 500), nudges = [];
+  const there = atHome({ enabled: true, devices: ['p.local'], probeSeconds: 8 }, { resolveFn: () => ({ v4: ['10.0.0.9'], v6: [] }), pingFn: (ip) => (t > 2000), nudgeFn: (ip) => nudges.push(ip), ndpFn: () => '', now: clock });
+  assert.deepEqual(there, { home: true, how: 'p.local 10.0.0.9 answered' });
+  assert.deepEqual(nudges, ['10.0.0.9']);   // (one nudge, then pings until it wakes)
+  t = 0;
+  const gone = atHome({ enabled: true, devices: ['p.local'], probeSeconds: 3 }, { resolveFn: () => ({ v4: ['10.0.0.9'], v6: [] }), pingFn: () => false, nudgeFn: () => {}, ndpFn: () => '', now: clock });
+  assert.deepEqual(gone, { home: false, how: 'no answer from p.local 10.0.0.9' });
+  const { ndpReachable } = await import('../triggers/presence.mjs');
+  const table = 'Neighbor Linklayer Address Netif Expire St Flgs Prbs\n2001:db8::5 aa:bb en0 18s S\nfe80::1c4b:f328:25af:3d82%en0 aa:bb en0 20s R\n';
+  assert.equal(ndpReachable({ v6: ['2001:db8::5'], link: [] }, table), '');   // (stale is not proof)
+  assert.equal(ndpReachable({ v6: [], link: ['1c4b:f328:25af:3d82'] }, table), 'fe80::1c4b:f328:25af:3d82');
+  t = 0;
+  assert.deepEqual(atHome({ enabled: true, devices: ['p.local'], probeSeconds: 3 }, { resolveFn: () => ({ v4: ['10.0.0.9'], v6: [], link: ['1c4b'] }), pingFn: () => false, nudgeFn: () => {}, ndpFn: () => 'fe80::1c4b', now: clock }),
+    { home: true, how: 'p.local fe80::1c4b reachable (neighbor discovery)' });
+  const off = atHome({ enabled: true, devices: ['p.local'] }, { resolveFn: () => ({ v4: [], v6: [], link: [] }), pingFn: () => true, nudgeFn: () => {}, ndpFn: () => '' });
+  assert.deepEqual(off, { home: false, how: 'p.local not on this network' });
+});
+
+test('ring: nobody home means no ring (the guards before it still decide first); --force skips the check', () => {
+  const cfg = cfgWith({ ring: { gapMinutes: 0 } }), opened = [], open = (u) => opened.push(u);   // (gap 0: earlier rings in this file do not hold these)
+  const away = ring('x', { cfg, now: Date.now(), idle: 60 * min, open, home: () => ({ home: false, how: 'no answer from p.local' }) });
+  assert.deepEqual(away, { rang: false, skipped: 'nobody home (no answer from p.local)' });
+  let asked = 0;
+  const atMac = ring('x', { cfg, now: Date.now(), idle: 0, open, home: () => { asked++; return { home: true }; } });
+  assert.match(atMac.skipped, /at the Mac/); assert.equal(asked, 0);
+  assert.equal(ring('x', { cfg, now: Date.now(), idle: 60 * min, open, home: () => ({ home: true, how: 'ok' }) }).rang, true);
+  assert.equal(ring('x', { cfg, now: Date.now(), idle: 0, open, force: true, home: () => ({ home: false }) }).rang, true);
+});
