@@ -31,11 +31,11 @@ Nothing leaves your Mac. The watcher reads a local SQLite file, talks to Super P
 Requirements: macOS 14 or later, the Xcode command line tools (`xcode-select --install`), and Node 22.13 or later.
 
 ```bash
-git clone https://github.com/tario-you/wake-alarm.git
+git clone https://github.com/tario-you/alarmly-mac.git
 ```
 
 ```bash
-cd wake-alarm && app/build.sh
+cd alarmly-mac && app/build.sh
 ```
 
 This builds `Wake.app`, installs it to `/Applications`, registers `wake://`, and launches it. On first launch Wake opens its alarm window and adds itself as a login item. The first time it changes the volume, macOS asks you to let Wake control System Events. Allow it.

@@ -1,5 +1,5 @@
 {
-  "name": "wake-alarm",
+  "name": "alarmly-mac",
   "version": "1.1.0",
   "private": true,
   "description": "A Mac alarm you can't snooze, plus triggers that ring it when WeChat (or any app) messages you and put the message on your Super Productivity list.",
