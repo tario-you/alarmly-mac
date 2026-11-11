@@ -193,7 +193,8 @@ final class Ringer: ObservableObject {
     static let shared = Ringer()
     static var silent = false          // tests: no sound, no volume change
     static var headless = false        // tests: build kiosk windows but never show them
-    /// The siren goes silent while you type an answer, and comes back this long after the last key.
+    /// A right answer quiets the siren this long, for the next problem. Typing alone quiets nothing: until 11-11 any key in the
+    /// answer box silenced it, and a teammate mashing keys kept it off without solving anything.
     static var quietFor: TimeInterval = 20
     var windowsForTest: [NSWindow] { windows }
     var playerForTest: AVAudioPlayer? { player }
@@ -202,11 +203,11 @@ final class Ringer: ObservableObject {
     @Published var problem = Problem.random()
     @Published var solved = 0
     @Published var feedback = ""
-    @Published var lastKey = Date.distantPast
+    @Published var quietSince = Date.distantPast
     var total: Int { alarm?.problems ?? 3 }
-    var isQuiet: Bool { Date().timeIntervalSince(lastKey) < Ringer.quietFor }
-    var quietLeft: Int { Swift.max(0, Int((Ringer.quietFor - Date().timeIntervalSince(lastKey)).rounded(.up))) }
-    /// What the siren plays at, before the test mute: 0 while typing, 1 otherwise.
+    var isQuiet: Bool { Date().timeIntervalSince(quietSince) < Ringer.quietFor }
+    var quietLeft: Int { Swift.max(0, Int((Ringer.quietFor - Date().timeIntervalSince(quietSince)).rounded(.up))) }
+    /// What the siren plays at, before the test mute: 0 just after a right answer, 1 otherwise.
     private(set) var sirenVolume: Float = 1
 
     private var windows: [NSWindow] = []
@@ -220,7 +221,7 @@ final class Ringer: ObservableObject {
 
     func ring(_ a: Alarm) {
         guard !isRinging else { return }
-        alarm = a; solved = 0; feedback = ""; problem = .random(); startedAt = Date(); lastKey = .distantPast
+        alarm = a; solved = 0; feedback = ""; problem = .random(); startedAt = Date(); quietSince = .distantPast
         var id: IOPMAssertionID = 0
         IOPMAssertionDeclareUserActivity("Wake alarm" as CFString, kIOPMUserActiveLocal, &id)
         takeOverScreens(show: !Ringer.headless)
@@ -278,14 +279,7 @@ final class Ringer: ObservableObject {
         if Date().timeIntervalSince(startedAt) > 3600 { stop() }   // hard cap: 1 hour
     }
 
-    /// Each key in the answer box: the siren stops at once and stays off while you keep typing.
-    func typed() {
-        guard isRinging else { return }
-        lastKey = Date()
-        updateLoudness()
-    }
-
-    /// Silent within quietFor of the last key, full blast otherwise. Runs on every key and every second.
+    /// Silent within quietFor of a right answer, full blast otherwise. Runs on every answer and every second.
     func updateLoudness() {
         sirenVolume = isQuiet ? 0 : 1
         player?.volume = Ringer.silent ? 0 : sirenVolume
@@ -294,14 +288,16 @@ final class Ringer: ObservableObject {
     func submit(_ text: String) -> Bool {
         let digits = text.trimmingCharacters(in: .whitespaces)
         guard let n = Int(digits) else { feedback = "Numbers only"; return false }
-        if n == problem.answer {
+        let right = n == problem.answer
+        if right {
             solved += 1; feedback = ""
             if solved >= total { stop(); return true }
+            quietSince = Date(); updateLoudness()   // (quiet for the next problem)
         } else {
             feedback = "Wrong. New problem."
         }
         problem = .random()
-        return n == problem.answer
+        return right
     }
 
     func stop() {
@@ -359,11 +355,10 @@ struct RingView: View {
                         .frame(width: 360, height: 90)
                         .background(RoundedRectangle(cornerRadius: 18).fill(.white.opacity(0.12)))
                         .focused($focused)
-                        .onChange(of: input) { _, _ in r.typed() }
-                        .onSubmit { r.typed(); _ = r.submit(input); input = ""; focused = true }
+                        .onSubmit { _ = r.submit(input); input = ""; focused = true }
                     Text(r.feedback.isEmpty ? " " : r.feedback)
                         .font(.system(size: 24, weight: .semibold)).foregroundStyle(.red)
-                    Text(r.isQuiet ? "Quiet while you type · back in \(r.quietLeft) s" : "Type the answer to quiet it")
+                    Text(r.isQuiet ? "Right · quiet for \(r.quietLeft) s" : "Solve it to quiet it")
                         .font(.system(size: 20, weight: .medium)).foregroundStyle(.white.opacity(0.55))
                     HStack(spacing: 10) {
                         ForEach(0..<r.total, id: \.self) { i in
@@ -625,12 +620,11 @@ func selftest() -> Int32 {
     let volBefore = Volume.get()
     check(r.isRinging, "ring starts")
     check(r.playerForTest?.isPlaying == true && r.playerForTest?.numberOfLoops == -1, "siren playing on loop (muted for test)")
-    check(r.sirenVolume == 1 && !r.isQuiet, "siren at full before any key")
-    r.typed(); check(r.sirenVolume == 0 && r.isQuiet, "siren silent the moment you type")
-    r.lastKey = Date().addingTimeInterval(-(Ringer.quietFor - 2)); r.updateLoudness()
-    check(r.sirenVolume == 0, "still silent \(Int(Ringer.quietFor) - 2) s after the last key")
-    r.lastKey = Date().addingTimeInterval(-(Ringer.quietFor + 1)); r.updateLoudness()
-    check(r.sirenVolume == 1 && !r.isQuiet, "siren back at full \(Int(Ringer.quietFor) + 1) s after the last key")
+    check(r.sirenVolume == 1 && !r.isQuiet, "siren at full before any answer")
+    r.quietSince = Date().addingTimeInterval(-(Ringer.quietFor - 2)); r.updateLoudness()
+    check(r.sirenVolume == 0, "still quiet \(Int(Ringer.quietFor) - 2) s after a right answer")
+    r.quietSince = Date().addingTimeInterval(-(Ringer.quietFor + 1)); r.updateLoudness()
+    check(r.sirenVolume == 1 && !r.isQuiet, "siren back at full \(Int(Ringer.quietFor) + 1) s after a right answer")
     check(r.playerForTest?.volume == 0, "test mute holds through quiet and loud")
     // A real key into the math screen's answer box, through AppKit's field editor. SwiftUI orders a window front once its
     // focused field changes, so this runs in its own window, fully transparent and far off every screen, closed after.
@@ -646,12 +640,12 @@ func selftest() -> Int32 {
     let tf = field(th)
     check(tf != nil, "answer box found on the math screen")
     if let tf, tw.makeFirstResponder(tf), let ed = tf.currentEditor() as? NSTextView {
-        ed.insertText("4", replacementRange: NSRange(location: NSNotFound, length: 0))
+        for k in ["4", "x", "9", "q", "7"] { ed.insertText(k, replacementRange: NSRange(location: NSNotFound, length: 0)) }
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
     }
-    check(r.isQuiet && r.sirenVolume == 0, "a key typed in the answer box silences the siren")
+    check(!r.isQuiet && r.sirenVolume == 1, "keys mashed into the answer box leave the siren at full")
     tw.orderOut(nil); tw.close()
-    r.lastKey = .distantPast; r.updateLoudness()
+    r.quietSince = .distantPast; r.updateLoudness()
     check(r.windowsForTest.count == NSScreen.screens.count, "one kiosk window per screen (\(NSScreen.screens.count))")
     check(r.windowsForTest.allSatisfy { w in w.level == .screenSaver && w.canBecomeKey
             && NSScreen.screens.contains { $0.frame == w.frame } }, "kiosk windows at screen-saver level, full screen")
@@ -663,7 +657,9 @@ func selftest() -> Int32 {
     check(NSApp.delegate?.applicationShouldTerminate?(NSApp) == .terminateCancel, "quit blocked while ringing")
     _ = r.submit("abc"); check(r.isRinging && r.solved == 0, "non-number rejected")
     _ = r.submit(String(r.problem.answer + 1)); check(r.isRinging && r.solved == 0, "wrong answer rejected")
+    check(!r.isQuiet && r.sirenVolume == 1, "a wrong answer buys no quiet")
     _ = r.submit(String(r.problem.answer)); check(r.isRinging && r.solved == 1, "1 of 2 solved, still ringing")
+    check(r.isQuiet && r.sirenVolume == 0, "a right answer quiets the siren for the next problem")
     _ = r.submit(String(r.problem.answer)); check(!r.isRinging, "2 of 2 solved, alarm stops")
     check(NSApp.delegate?.applicationShouldTerminate?(NSApp) == .terminateNow, "quit allowed after")
     check(r.playerForTest == nil && r.windowsForTest.isEmpty, "siren stopped, windows closed")
@@ -684,8 +680,8 @@ if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
     let r = Ringer.shared
     r.alarm = Alarm(problems: 3, label: "WeChat: Alice"); r.solved = 1
     renderPNG(RingView(r: r), size: NSSize(width: 1440, height: 900), to: dir + "/ring.png")
-    r.lastKey = Date().addingTimeInterval(-6)
-    renderPNG(RingView(r: r), size: NSSize(width: 1440, height: 900), to: dir + "/ring-typing.png")
+    r.quietSince = Date().addingTimeInterval(-6)
+    renderPNG(RingView(r: r), size: NSSize(width: 1440, height: 900), to: dir + "/ring-quiet.png")
     AlarmStore.shared.alarms = [Alarm(hour: 7, minute: 0, days: [2, 3, 4, 5, 6], label: "Work"),
                                 Alarm(hour: 9, minute: 30, days: [1, 7], enabled: false)]
     renderPNG(ContentView(), size: NSSize(width: 400, height: 460), to: dir + "/alarms.png")
