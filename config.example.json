@@ -1,0 +1,25 @@
+{
+  "apps": {
+    "com.tencent.xinWeChat": "WeChat",
+    "com.apple.MobileSMS": "Messages"
+  },
+  "names": {
+    "wxid_abc123": "Alice",
+    "12345678@chatroom": "Project group",
+    "wxid_family": "-"
+  },
+  "ringFor": "all",
+  "saveText": "all",
+  "ring": {
+    "enabled": true,
+    "problems": 2,
+    "gapMinutes": 10,
+    "awayMinutes": 15,
+    "quietHours": null
+  },
+  "superProductivity": {
+    "enabled": true,
+    "projectId": "INBOX_PROJECT"
+  },
+  "pollSeconds": 5
+}

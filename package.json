@@ -1,0 +1,15 @@
+{
+  "name": "wake-alarm",
+  "version": "1.1.0",
+  "private": true,
+  "description": "A Mac alarm you can't snooze, plus triggers that ring it when WeChat (or any app) messages you and put the message on your Super Productivity list.",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "build": "app/build.sh",
+    "selftest": "app/build.sh --no-install && app/build/Wake.app/Contents/MacOS/Wake --selftest",
+    "watch": "node triggers/notify-watch.mjs run"
+  },
+  "license": "MIT"
+}
