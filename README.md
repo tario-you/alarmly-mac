@@ -6,9 +6,9 @@ When it rings, Wake covers every screen, blocks Cmd-Tab, Force Quit, and Quit, t
 
 <p align="center"><img src="docs/images/ring.png" width="760" alt="Wake ringing: a full-screen clock, the label 'WeChat: Alice', and the math problem 24 × 9 + 105"></p>
 
-| Alarm list (menu bar app) | While you type, the siren is quiet |
+| Alarm list (menu bar app) | After a right answer, the siren is quiet |
 |---|---|
-| <img src="docs/images/alarms.png" width="340" alt="Wake's alarm list with a weekday 7:00 alarm and a disabled weekend 9:30 alarm"> | <img src="docs/images/ring-typing.png" width="440" alt="The ring screen with 'Quiet while you type · back in 14 s'"> |
+| <img src="docs/images/alarms.png" width="340" alt="Wake's alarm list with a weekday 7:00 alarm and a disabled weekend 9:30 alarm"> | <img src="docs/images/ring-quiet.png" width="440" alt="The ring screen with 'Right · quiet for 14 s'"> |
 
 ## How it fits together
 
@@ -207,7 +207,7 @@ Everything is in `app/main.swift`:
 |---|---|
 | Problem difficulty | `Problem.random()`, default `a × b + c` with a 13–49, b 3–9, c 101–399 |
 | Siren sound | `Siren.wav()`, which generates a 2 s loop of 880 and 1320 Hz square-wave beeps |
-| Quiet-while-typing window | `Ringer.quietFor`, default 20 s |
+| Quiet after a right answer | `Ringer.quietFor`, default 20 s; typing alone never quiets it |
 | Safety cap | `Ringer.enforce()` stops the alarm after 1 hour |
 | What gets locked | `Ringer.lockOptions` |
 | Bundle id | `BUNDLE_ID=com.you.wake app/build.sh`. The alarms are stored in that defaults domain. |
