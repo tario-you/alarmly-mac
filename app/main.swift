@@ -278,7 +278,8 @@ final class Ringer: ObservableObject {
         if Date().timeIntervalSince(startedAt) > 3600 { stop() }   // hard cap: 1 hour
     }
 
-    /// Each key in the answer box: the siren stops at once and stays off while you keep typing.
+    /// Each key in the answer box, right or wrong, any key: the siren stops at once and stays off while you keep typing.
+    /// Owner's rule: never gate this on a correct answer (a 11-11 change that did was reverted 11-12).
     func typed() {
         guard isRinging else { return }
         lastKey = Date()
